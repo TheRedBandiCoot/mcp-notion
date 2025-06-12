@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { Client, APIErrorCode } from '@notionhq/client';
+import puppeteer from 'puppeteer';
 import 'dotenv/config';
 
 const axiosInstance = axios.create({
@@ -74,7 +75,7 @@ async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/') {
   }
 }
 
-async function getNotionDetail(title, rating, type, genre, url, imgUrl) {
+async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform) {
   const DATABASE_ID = process.env.DATABASE_ID;
 
   try {
@@ -96,6 +97,14 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl) {
         name: val
       };
     });
+
+    const platformObj = [];
+    platform.map((val, i) => {
+      platformObj[i] = {
+        name: val
+      };
+    });
+
     const createResponse = await notion.pages.create({
       parent: {
         type: 'database_id',
@@ -119,6 +128,9 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl) {
         },
         AW: {
           checkbox: true
+        },
+        Platform: {
+          multi_select: platformObj
         }
       }
     });
@@ -182,12 +194,12 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl) {
 
 async function main() {
   console.log('starting');
-  const url = await getSearchResult(2, 'the florida project - imdb');
-  const { tmdbId, type, imgUrl } = await getTMDBDetails(url);
+  const url = await getSearchResult(2, 'Leaked! - imdb');
+  const { tmdbId, type, imgUrl, platform } = await getTMDBDetails(url);
   const info = await getImdbInfo(url);
-  getNotionDetail(info.title, Number(info.rating), type, info.genre, url, imgUrl);
+  getNotionDetail(info.title, Number(info.rating), type, info.genre, url, imgUrl, platform);
 }
-main();
+// main();
 async function getTMDBDetails(imdbURL) {
   const imdbID = imdbURL.split('https://www.imdb.com/title/')[1].split('/')[0];
   const imgBaseUrl = 'https://image.tmdb.org/t/p/original';
@@ -202,6 +214,8 @@ async function getTMDBDetails(imdbURL) {
     const findByIdResponse = await axios.get(findByIdUrl, options);
     const data = findByIdResponse.data;
     let type, tmdbId, imgUrl;
+    let platform = [];
+
     if (data['movie_results'].length === 0) {
       const tvData = data?.tv_results[0]; // tv
       tmdbId = tvData.id;
@@ -209,6 +223,35 @@ async function getTMDBDetails(imdbURL) {
       const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images?include_image_language=en`;
       const tvSeriesImageResponse = await axios.get(tvSeriesImageUrl, options);
       const imgPath = tvSeriesImageResponse.data.backdrops[0].file_path; // e.g. "/hZkgoQYus5vegHoetLkCJzb17zJ.jpg"
+
+      const tvSeriesWatchProviderUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/watch/providers`;
+      const tvSeriesWatchProviderResponse = await axios.get(tvSeriesWatchProviderUrl, options);
+      const tvSeriesWatchProviderData = tvSeriesWatchProviderResponse.data;
+      const tvSeriesWatchProviderRegion = tvSeriesWatchProviderData.results?.['IN'];
+      const tvSeriesWatchProviderRegionFlatRate = tvSeriesWatchProviderRegion?.['flatrate'];
+      if (
+        tvSeriesWatchProviderRegion == undefined ||
+        tvSeriesWatchProviderRegionFlatRate == undefined ||
+        !Array.isArray(tvSeriesWatchProviderRegionFlatRate) ||
+        tvSeriesWatchProviderRegionFlatRate.length === 0
+      ) {
+        const browser = await puppeteer.launch({ headless: true });
+        const page = await browser.newPage();
+        await page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        );
+        await page.goto(imdbURL, { waitUntil: 'networkidle2' });
+        const selector = 'div.ipc-slate--baseAlt>div.ipc-media>img.ipc-image';
+        await page.waitForSelector(selector);
+        const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
+        platform = scrapeResponse;
+        platform.shift();
+        await browser.close();
+      } else {
+        tvSeriesWatchProviderRegionFlatRate.map(e => {
+          platform.push(e.provider_name);
+        });
+      }
       imgUrl = imgBaseUrl + imgPath;
     } else {
       const movieData = data?.movie_results[0]; // movie
@@ -217,10 +260,79 @@ async function getTMDBDetails(imdbURL) {
       const movieImageUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/images?include_image_language=en`;
       const movieImageResponse = await axios.get(movieImageUrl, options);
       const imgPath = movieImageResponse.data.backdrops[0].file_path;
+
+      const movieWatchProviderUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers`;
+      const movieWatchProviderResponse = await axios.get(movieWatchProviderUrl, options);
+      const movieWatchProviderData = movieWatchProviderResponse.data;
+      const movieWatchProviderRegion = movieWatchProviderData.results?.['IN'];
+      const movieWatchProviderRegionFlatRate = movieWatchProviderRegion?.['flatrate'];
+      if (
+        movieWatchProviderRegion == undefined ||
+        movieWatchProviderRegionFlatRate == undefined ||
+        !Array.isArray(movieWatchProviderRegionFlatRate) ||
+        movieWatchProviderRegionFlatRate.length === 0
+      ) {
+        const browser = await puppeteer.launch({ headless: true });
+        const page = await browser.newPage();
+        await page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        );
+        await page.goto(imdbURL, { waitUntil: 'networkidle2' });
+        const selector =
+          'div.ipc-slate.ipc-slate--baseAlt.ipc-slate--dynamic-width.no-description.ipc-sub-grid-item.ipc-sub-grid-item--span-4>div.ipc-media.ipc-media--slate-16x9.ipc-image-media-ratio--slate-16x9.ipc-media--media-radius.ipc-media--baseAlt.ipc-media--slate-m.ipc-media__img>img.ipc-image';
+        await page.waitForSelector(selector);
+        const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
+        platform = scrapeResponse;
+        platform.shift();
+        await browser.close();
+      } else {
+        movieWatchProviderRegionFlatRate.map(e => {
+          platform.push(e.provider_name);
+        });
+      }
       imgUrl = imgBaseUrl + imgPath;
     }
-    return { tmdbId, type, imgUrl };
+
+    return { tmdbId, type, imgUrl, platform };
   } catch (error) {
     console.log(error);
   }
 }
+
+async function test(url) {
+  try {
+    const browser = await puppeteer.launch({ headless: true });
+    console.log('Done 1');
+    const page = await browser.newPage();
+    console.log('Done 2');
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    );
+    console.log('Done 3');
+
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    console.log('Done 4');
+
+    const tvSeriesSelector = 'div.ipc-slate--baseAlt>div.ipc-media>img.ipc-image';
+    const movieSelector =
+      'div.ipc-slate.ipc-slate--baseAlt.ipc-slate--dynamic-width.no-description.ipc-sub-grid-item.ipc-sub-grid-item--span-4>div.ipc-media.ipc-media--slate-16x9.ipc-image-media-ratio--slate-16x9.ipc-media--media-radius.ipc-media--baseAlt.ipc-media--slate-m.ipc-media__img>img.ipc-image';
+    await page.waitForSelector(movieSelector, { timeout: 10000 });
+
+    console.log('Done 5');
+
+    const data = await page.$$eval(movieSelector, imgs => imgs.map(img => img.alt));
+    console.log('Done 6');
+    let arr = [];
+    arr = data;
+    // arr.shift();
+
+    console.log(arr);
+    await browser.close();
+    console.log('Done 7');
+  } catch (error) {
+    console.log(error.name);
+  }
+}
+
+test('https://www.imdb.com/title/tt5439796/?ref_=nm_flmg_job_1_cdt_t_6');
