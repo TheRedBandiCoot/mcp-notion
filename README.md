@@ -2,7 +2,7 @@
 
 ---
 
-## 📝01 - Where To Watch📝
+## 📝01 - Where To Watch - Processing📝
 
 - [Docs for Movie - Watch Provider](https://developer.themoviedb.org/reference/movie-watch-providers)
 - [Docs for Tv Series - Watch Provider](https://developer.themoviedb.org/reference/tv-series-watch-providers)
@@ -89,6 +89,12 @@ c.forEach(e => console.log(e.alt));
 
 ---
 
-## 📝03 - Season Detail
+## 📝03 - Season Detail📝
 
 - [Get **TMDB ID** - `number_of_seasons`](https://developer.themoviedb.org/reference/tv-series-details)
+
+---
+
+## 📝04 - Watch Provider Detail Change📝
+
+- movie/tv series watch provider options name change accordingly notion's platform multiselect name

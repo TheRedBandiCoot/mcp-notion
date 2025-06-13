@@ -178,6 +178,52 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform
               url: imgUrl
             }
           }
+        },
+        {
+          object: 'block',
+          type: 'column_list',
+          column_list: {
+            children: [
+              {
+                type: 'column',
+                object: 'block',
+                column: {
+                  width_ratio: 0.25,
+                  children: [
+                    {
+                      object: 'block',
+                      type: 'image',
+                      image: {
+                        type: 'external',
+                        external: {
+                          url: 'https://image.tmdb.org/t/p/original/uL5mDxbGFoRdMgUhI5rv41xBx03.jpg'
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                type: 'column',
+                object: 'block',
+                column: {
+                  width_ratio: 0.25,
+                  children: [
+                    {
+                      object: 'block',
+                      type: 'image',
+                      image: {
+                        type: 'external',
+                        external: {
+                          url: 'https://image.tmdb.org/t/p/original/froKabJfmCcLC4vcPs8AmRva2T4.jpg'
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         }
       ]
     });
@@ -194,12 +240,12 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform
 
 async function main() {
   console.log('starting');
-  const url = await getSearchResult(2, 'Leaked! - imdb');
+  const url = await getSearchResult(2, 'logan lucky - imdb');
   const { tmdbId, type, imgUrl, platform } = await getTMDBDetails(url);
   const info = await getImdbInfo(url);
   getNotionDetail(info.title, Number(info.rating), type, info.genre, url, imgUrl, platform);
 }
-// main();
+main();
 async function getTMDBDetails(imdbURL) {
   const imdbID = imdbURL.split('https://www.imdb.com/title/')[1].split('/')[0];
   const imgBaseUrl = 'https://image.tmdb.org/t/p/original';
@@ -220,7 +266,7 @@ async function getTMDBDetails(imdbURL) {
       const tvData = data?.tv_results[0]; // tv
       tmdbId = tvData.id;
       type = tvData.media_type;
-      const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images?include_image_language=en`;
+      const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images`;
       const tvSeriesImageResponse = await axios.get(tvSeriesImageUrl, options);
       const imgPath = tvSeriesImageResponse.data.backdrops[0].file_path; // e.g. "/hZkgoQYus5vegHoetLkCJzb17zJ.jpg"
 
@@ -242,10 +288,18 @@ async function getTMDBDetails(imdbURL) {
         );
         await page.goto(imdbURL, { waitUntil: 'networkidle2' });
         const selector = 'div.ipc-slate--baseAlt>div.ipc-media>img.ipc-image';
-        await page.waitForSelector(selector);
-        const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
-        platform = scrapeResponse;
-        platform.shift();
+        try {
+          await page.waitForSelector(selector, { timeout: 10000 });
+          const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
+          platform = scrapeResponse;
+          platform.shift();
+        } catch (err) {
+          if (err.name === 'TimeoutError') {
+            platform = ['HDToday', 'OnStream'];
+          } else {
+            throw err;
+          }
+        }
         await browser.close();
       } else {
         tvSeriesWatchProviderRegionFlatRate.map(e => {
@@ -257,7 +311,7 @@ async function getTMDBDetails(imdbURL) {
       const movieData = data?.movie_results[0]; // movie
       tmdbId = movieData.id;
       type = movieData.media_type;
-      const movieImageUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/images?include_image_language=en`;
+      const movieImageUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/images`;
       const movieImageResponse = await axios.get(movieImageUrl, options);
       const imgPath = movieImageResponse.data.backdrops[0].file_path;
 
@@ -280,10 +334,17 @@ async function getTMDBDetails(imdbURL) {
         await page.goto(imdbURL, { waitUntil: 'networkidle2' });
         const selector =
           'div.ipc-slate.ipc-slate--baseAlt.ipc-slate--dynamic-width.no-description.ipc-sub-grid-item.ipc-sub-grid-item--span-4>div.ipc-media.ipc-media--slate-16x9.ipc-image-media-ratio--slate-16x9.ipc-media--media-radius.ipc-media--baseAlt.ipc-media--slate-m.ipc-media__img>img.ipc-image';
-        await page.waitForSelector(selector);
-        const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
-        platform = scrapeResponse;
-        platform.shift();
+        try {
+          await page.waitForSelector(selector, { timeout: 10000 });
+          const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
+          platform = scrapeResponse;
+        } catch (err) {
+          if (err.name === 'TimeoutError') {
+            platform = ['HDToday', 'OnStream'];
+          } else {
+            throw err;
+          }
+        }
         await browser.close();
       } else {
         movieWatchProviderRegionFlatRate.map(e => {
@@ -295,11 +356,15 @@ async function getTMDBDetails(imdbURL) {
 
     return { tmdbId, type, imgUrl, platform };
   } catch (error) {
-    console.log(error);
+    console.log(error.message);
+    platform = [];
   }
+  console.log('Final PlatForm Data : ', platform);
 }
 
 async function test(url) {
+  let arr = [];
+
   try {
     const browser = await puppeteer.launch({ headless: true });
     console.log('Done 1');
@@ -317,22 +382,32 @@ async function test(url) {
     const tvSeriesSelector = 'div.ipc-slate--baseAlt>div.ipc-media>img.ipc-image';
     const movieSelector =
       'div.ipc-slate.ipc-slate--baseAlt.ipc-slate--dynamic-width.no-description.ipc-sub-grid-item.ipc-sub-grid-item--span-4>div.ipc-media.ipc-media--slate-16x9.ipc-image-media-ratio--slate-16x9.ipc-media--media-radius.ipc-media--baseAlt.ipc-media--slate-m.ipc-media__img>img.ipc-image';
-    await page.waitForSelector(movieSelector, { timeout: 10000 });
+    try {
+      await page.waitForSelector(movieSelector, { timeout: 10000 });
+      console.log('Done 5');
+      const data = await page.$$eval(movieSelector, imgs => imgs.map(img => img.alt));
+      console.log('Done 6');
+      arr = data;
+    } catch (err) {
+      console.log('⚠️ Selector not found in time, fallback logic applied');
+      if (err.name === 'TimeoutError') {
+        arr = ['HDToday', 'OnStream'];
+      } else {
+        throw err;
+      }
+    }
 
-    console.log('Done 5');
-
-    const data = await page.$$eval(movieSelector, imgs => imgs.map(img => img.alt));
-    console.log('Done 6');
-    let arr = [];
-    arr = data;
     // arr.shift();
+    // console.log(arr);
 
-    console.log(arr);
     await browser.close();
     console.log('Done 7');
   } catch (error) {
-    console.log(error.name);
+    console.log(error.name); // TimeoutError - if Time exceed more than 10sec
+    arr = []; // fallback to prev.
   }
+
+  console.log('final Arr : ', arr);
 }
 
-test('https://www.imdb.com/title/tt5439796/?ref_=nm_flmg_job_1_cdt_t_6');
+// test('https://www.imdb.com/title/tt5439796/?ref_=nm_flmg_job_1_cdt_t_6'); // https://www.imdb.com/title/tt1375666/?ref_=nv_sr_srsg_0_tt_4_nm_4_in_0_q_ince
