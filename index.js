@@ -75,7 +75,7 @@ async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/') {
   }
 }
 
-async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform) {
+async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform, imgArr) {
   const DATABASE_ID = process.env.DATABASE_ID;
 
   try {
@@ -153,81 +153,82 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform
     //     Status: { select: { name: 'Done' } }
     //   }
     // });
+    function genImgColumn(arr) {
+      const finalArr = [];
+      const tempChildrenArr = [];
 
-    const blockChildrenAppendResponse = await notion.blocks.children.append({
-      block_id: responseQuery.results[0].id,
-      children: [
-        {
-          object: 'block',
-          type: 'heading_1',
-          heading_1: {
-            rich_text: [{ type: 'text', text: { content: 'Movie Poster Here' } }]
-          }
-        },
-        {
-          object: 'block',
-          type: 'divider',
-          divider: {}
-        },
-        {
-          object: 'block',
-          type: 'image',
-          image: {
-            type: 'external',
-            external: {
-              url: imgUrl
+      arr.map(arrChild => {
+        const tempArr = [];
+        arrChild.map(imgUrl => {
+          const tempChildrenObj = {
+            type: 'column',
+            object: 'block',
+            column: {
+              width_ratio: 0.25,
+              children: [
+                {
+                  object: 'block',
+                  type: 'image',
+                  image: {
+                    type: 'external',
+                    external: {
+                      url: imgUrl
+                    }
+                  }
+                }
+              ]
             }
-          }
-        },
-        {
+          };
+
+          tempArr.push(tempChildrenObj);
+        });
+        tempChildrenArr.push(tempArr);
+      });
+
+      tempChildrenArr.map(e => {
+        const tempObj = {
           object: 'block',
           type: 'column_list',
           column_list: {
-            children: [
-              {
-                type: 'column',
-                object: 'block',
-                column: {
-                  width_ratio: 0.25,
-                  children: [
-                    {
-                      object: 'block',
-                      type: 'image',
-                      image: {
-                        type: 'external',
-                        external: {
-                          url: 'https://image.tmdb.org/t/p/original/uL5mDxbGFoRdMgUhI5rv41xBx03.jpg'
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                type: 'column',
-                object: 'block',
-                column: {
-                  width_ratio: 0.25,
-                  children: [
-                    {
-                      object: 'block',
-                      type: 'image',
-                      image: {
-                        type: 'external',
-                        external: {
-                          url: 'https://image.tmdb.org/t/p/original/froKabJfmCcLC4vcPs8AmRva2T4.jpg'
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
+            children: e
+          }
+        };
+        finalArr.push(tempObj);
+      });
+
+      return finalArr;
+    }
+
+    const blocksChildrenArr = [
+      {
+        object: 'block',
+        type: 'heading_1',
+        heading_1: {
+          rich_text: [{ type: 'text', text: { content: 'Movie Poster Here' } }]
+        }
+      },
+      {
+        object: 'block',
+        type: 'divider',
+        divider: {}
+      },
+      {
+        object: 'block',
+        type: 'image',
+        image: {
+          type: 'external',
+          external: {
+            url: imgUrl
           }
         }
-      ]
+      }
+    ];
+    genImgColumn(imgArr).map(e => blocksChildrenArr.push(e));
+
+    const blockChildrenAppendResponse = await notion.blocks.children.append({
+      block_id: responseQuery.results[0].id,
+      children: blocksChildrenArr
     });
-    // console.log(blockChildrenAppendResponse);
     console.log('Done');
   } catch (error) {
     if (error.code === APIErrorCode.ObjectNotFound) {
@@ -240,10 +241,10 @@ async function getNotionDetail(title, rating, type, genre, url, imgUrl, platform
 
 async function main() {
   console.log('starting');
-  const url = await getSearchResult(2, 'logan lucky - imdb');
-  const { tmdbId, type, imgUrl, platform } = await getTMDBDetails(url);
+  const url = await getSearchResult(2, 'inception - imdb');
+  const { tmdbId, type, imgUrl, platform, imgArr } = await getTMDBDetails(url);
   const info = await getImdbInfo(url);
-  getNotionDetail(info.title, Number(info.rating), type, info.genre, url, imgUrl, platform);
+  getNotionDetail(info.title, Number(info.rating), type, info.genre, url, imgUrl, platform, imgArr);
 }
 main();
 async function getTMDBDetails(imdbURL) {
@@ -259,8 +260,52 @@ async function getTMDBDetails(imdbURL) {
     };
     const findByIdResponse = await axios.get(findByIdUrl, options);
     const data = findByIdResponse.data;
-    let type, tmdbId, imgUrl;
+    let type, tmdbId, imgUrl, imgArr;
     let platform = [];
+
+    function genAllImgURL(arr) {
+      const tempArr = [];
+      let tempChildArr = [];
+      arr.map((e, i) => {
+        tempChildArr.push(`${imgBaseUrl}${e.file_path}`);
+        if ((i + 1) % 4 === 0) {
+          tempArr.push(tempChildArr);
+          tempChildArr = [];
+        }
+      });
+      return tempArr;
+    }
+
+    function genIMDBPlatformFixedName(arr) {
+      const tempArr = [];
+      const predefineNameArr = ['JioCinema', 'JioHotstar', 'Netflix'];
+      arr.map(e => tempArr.push(e.split('Watch on ')[1]));
+      tempArr.map((e, i) => {
+        switch (e) {
+          case predefineNameArr[0]:
+            tempArr[i] = 'Jio Cinema';
+            break;
+          case predefineNameArr[1]:
+            tempArr[i] = 'Jio Hotstar';
+            break;
+        }
+      });
+      return tempArr;
+    }
+    function genTMDBPlatformFixedName(arr) {
+      const predefineNameArr = ['Amazon Prime Video', 'Zee5'];
+      arr.map((e, i) => {
+        switch (e) {
+          case predefineNameArr[0]:
+            arr[i] = 'Prime Video';
+            break;
+          case predefineNameArr[1]:
+            arr[i] = 'ZEE5';
+            break;
+        }
+      });
+      return arr;
+    }
 
     if (data['movie_results'].length === 0) {
       const tvData = data?.tv_results[0]; // tv
@@ -269,6 +314,9 @@ async function getTMDBDetails(imdbURL) {
       const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images`;
       const tvSeriesImageResponse = await axios.get(tvSeriesImageUrl, options);
       const imgPath = tvSeriesImageResponse.data.backdrops[0].file_path; // e.g. "/hZkgoQYus5vegHoetLkCJzb17zJ.jpg"
+
+      // Tv Img Arr
+      imgArr = genAllImgURL(tvSeriesImageResponse.data.backdrops);
 
       const tvSeriesWatchProviderUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/watch/providers`;
       const tvSeriesWatchProviderResponse = await axios.get(tvSeriesWatchProviderUrl, options);
@@ -279,7 +327,7 @@ async function getTMDBDetails(imdbURL) {
         tvSeriesWatchProviderRegion == undefined ||
         tvSeriesWatchProviderRegionFlatRate == undefined ||
         !Array.isArray(tvSeriesWatchProviderRegionFlatRate) ||
-        tvSeriesWatchProviderRegionFlatRate.length === 0
+        tvSeriesWatchProviderRegionFlatRate.length === 0 /* || true */ // testing
       ) {
         const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
@@ -291,7 +339,7 @@ async function getTMDBDetails(imdbURL) {
         try {
           await page.waitForSelector(selector, { timeout: 10000 });
           const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
-          platform = scrapeResponse;
+          platform = genIMDBPlatformFixedName(scrapeResponse);
           platform.shift();
         } catch (err) {
           if (err.name === 'TimeoutError') {
@@ -305,6 +353,7 @@ async function getTMDBDetails(imdbURL) {
         tvSeriesWatchProviderRegionFlatRate.map(e => {
           platform.push(e.provider_name);
         });
+        platform = genTMDBPlatformFixedName(platform);
       }
       imgUrl = imgBaseUrl + imgPath;
     } else {
@@ -314,6 +363,9 @@ async function getTMDBDetails(imdbURL) {
       const movieImageUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/images`;
       const movieImageResponse = await axios.get(movieImageUrl, options);
       const imgPath = movieImageResponse.data.backdrops[0].file_path;
+
+      // Movie Img Arr
+      imgArr = genAllImgURL(movieImageResponse.data.backdrops);
 
       const movieWatchProviderUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers`;
       const movieWatchProviderResponse = await axios.get(movieWatchProviderUrl, options);
@@ -337,7 +389,7 @@ async function getTMDBDetails(imdbURL) {
         try {
           await page.waitForSelector(selector, { timeout: 10000 });
           const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
-          platform = scrapeResponse;
+          platform = genIMDBPlatformFixedName(scrapeResponse);
         } catch (err) {
           if (err.name === 'TimeoutError') {
             platform = ['HDToday', 'OnStream'];
@@ -350,11 +402,12 @@ async function getTMDBDetails(imdbURL) {
         movieWatchProviderRegionFlatRate.map(e => {
           platform.push(e.provider_name);
         });
+        platform = genTMDBPlatformFixedName(platform);
       }
       imgUrl = imgBaseUrl + imgPath;
     }
 
-    return { tmdbId, type, imgUrl, platform };
+    return { tmdbId, type, imgUrl, platform, imgArr };
   } catch (error) {
     console.log(error.message);
     platform = [];
