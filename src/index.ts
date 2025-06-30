@@ -70,13 +70,20 @@ server.tool(
       .emoji()
       .describe(
         "Create/Generate ONE Emoji based on movie/tv series 'PLOT' where 'PLOT' information get from 'imdb-tmdb-mcp' tool return content"
+      ),
+    aw: z
+      .boolean()
+      .default(true)
+      .describe(
+        "aw - already watch, If user mentioned that he/she didn't watch the movie/tv show/web series then make the value 'false' otherwise default is 'true'"
       )
   },
-  async ({ title, emoji, rating, url, genre }) => {
+  async ({ title, emoji, rating, url, genre, aw }) => {
     const { platform, type, imgArr, imgUrl, number_of_seasons } = await getTMDBDetails(url);
     await getNotionDetail(
       { title, genre, rating, platform, type, url, imgArr, imgUrl, number_of_seasons },
-      emoji as EmojiRequest
+      emoji as EmojiRequest,
+      aw
     );
     return {
       content: [
@@ -92,7 +99,7 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('notion is running');
+  console.error('mcp-notion is running');
 }
 
 main();

@@ -60,10 +60,6 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
     const titleTxt = titleEle.first().text();
     const plot = plotEle.first().text();
 
-    // console.log('Movie IMDB Info: ', {
-    //   ratingTxt,
-    //   titleTxt
-    // });
     const listGenre = $1('a.ipc-chip.ipc-chip--on-baseAlt>span.ipc-chip__text');
     const genre: Array<string> = [];
     listGenre.each((i, ele) => {
@@ -73,7 +69,6 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
     const type = $1(
       'ul.ipc-inline-list.ipc-inline-list--show-dividers.sc-d3b78e42-2.etAqcO.baseAlt.baseAlt>li.ipc-inline-list__item'
     );
-    // console.log(type.first().text());
 
     const info = {
       title: titleTxt,
@@ -83,7 +78,6 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
       genre
     };
     return info;
-    // console.log(genre);
   } catch (error) {
     console.log(error);
     const info = {
@@ -109,23 +103,12 @@ export async function getNotionDetail(
     imgArr,
     number_of_seasons
   }: GetNotionDetailType,
-  emoji: EmojiRequest
+  emoji: EmojiRequest,
+  aw: boolean = true
 ) {
   const DATABASE_ID = process.env.DATABASE_ID;
 
   try {
-    //   const listUsersResponse = await notion.users.list({});
-    //   console.log(listUsersResponse);
-    // const myPage = await notion.databases.query({
-    //   database_id: DATABASE_ID,
-    //   filter: {
-    //     property: 'Name',
-    //     rich_text: {
-    //       contains: 'something-name'
-    //     }
-    //   }
-    // });
-    // console.log(myPage.results[0].properties.Name.title);
     const genreObj: Array<{ name: string }> = [];
     genre.map((val, i) => {
       genreObj[i] = {
@@ -166,7 +149,7 @@ export async function getNotionDetail(
           multi_select: genreObj
         },
         AW: {
-          checkbox: true
+          checkbox: aw
         },
         Platform: {
           multi_select: platformObj
@@ -184,13 +167,6 @@ export async function getNotionDetail(
       }
     });
 
-    // const updateResponse = await notion.pages.update({
-    //   page_id: responseQuery.results[0].id,
-    //   properties: {
-    //     count: { number: 45 },
-    //     Status: { select: { name: 'Done' } }
-    //   }
-    // });
     function genImgColumn(arr: string[][]) {
       const finalArr: BlockObjectRequest[] = [];
       const tempChildrenArr: BlockObjectRequest[][] = [];
@@ -300,70 +276,6 @@ export async function getNotionDetail(
     }
   }
 }
-
-//  const story = document.querySelector("[data-testid='plot-xs_to_m']")
-//  story.innerText
-
-// export async function getImdb(min = 2, query: string): Promise<{ plot: string; title: string }> {
-//   try {
-//     const response = await axiosInstance.get('', {
-//       params: {
-//         q: query,
-//         num: Math.min(min, 3)
-//       }
-//     });
-//     const url = response.data.items[0].link;
-
-//     const headers = {
-//       'User-Agent':
-//         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-//     };
-//     const imdbResponse = await axios.get(url, { headers });
-//     const imdbPlotResponse = await axios.get(`${url}plotsummary`, { headers });
-//     const imdbResponseHtml = imdbResponse.data;
-//     const imdbPlotResponseHtml = imdbPlotResponse.data;
-
-//     const $1 = cheerio.load(imdbResponseHtml);
-//     const $2 = cheerio.load(imdbPlotResponseHtml);
-
-//     // const plotEle = $2("[data-testid='plot-xs_to_m']");
-//     const plotEle = $2('.ipc-html-content-inner-div');
-//     const titleEle = $1('span.hero__primary-text');
-//     const plot = plotEle.first().text();
-//     const title = titleEle.first().text();
-
-//     return { plot, title };
-//   } catch (error) {
-//     // if (error.code === APIErrorCode.ObjectNotFound) {
-//     //   console.log('NOTION_ERROR : Obj not found in Notion');
-//     // } else {
-//     //   console.log(error);
-//     // }
-//     console.log(error);
-//     return { plot: '', title: '' };
-//   }
-// }
-
-// async function main() {
-// console.log('starting');
-// const url = await getSearchResult(2, 'Interstellar - imdb');
-// const { tmdbId, type, imgUrl, platform, imgArr, number_of_seasons } = await getTMDBDetails(url);
-// const info = await getImdbInfo(url);
-// getNotionDetail(
-//   info.title,
-//   Number(info.rating),
-//   type,
-//   info.genre,
-//   url,
-//   imgUrl,
-//   platform,
-//   imgArr,
-//   number_of_seasons
-// );
-// }
-
-// main();
-
 export async function getTMDBDetails(imdbURL: string): Promise<{
   tmdbId: string;
   type: string;
@@ -542,78 +454,6 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
 
     return { tmdbId, type, imgUrl, platform, imgArr, number_of_seasons };
   } catch (error) {
-    // console.log(error.message);
-    // platform = [];
     return { platform: [], imgArr: [], imgUrl: '', number_of_seasons: 0, tmdbId: '', type: '' };
   }
-  // console.log('Final PlatForm Data : ', platform);
 }
-
-// async function test(url) {
-//   let arr = [];
-
-//   try {
-//     const browser = await puppeteer.launch({ headless: true });
-//     console.log('Done 1');
-//     const page = await browser.newPage();
-//     console.log('Done 2');
-
-//     await page.setUserAgent(
-//       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-//     );
-//     console.log('Done 3');
-
-//     await page.goto(url, { waitUntil: 'networkidle2' });
-//     console.log('Done 4');
-
-//     const tvSeriesSelector = 'div.ipc-slate--baseAlt>div.ipc-media>img.ipc-image';
-//     const movieSelector =
-//       'div.ipc-slate.ipc-slate--baseAlt.ipc-slate--dynamic-width.no-description.ipc-sub-grid-item.ipc-sub-grid-item--span-4>div.ipc-media.ipc-media--slate-16x9.ipc-image-media-ratio--slate-16x9.ipc-media--media-radius.ipc-media--baseAlt.ipc-media--slate-m.ipc-media__img>img.ipc-image';
-//     try {
-//       await page.waitForSelector(movieSelector, { timeout: 10000 });
-//       console.log('Done 5');
-//       const data = await page.$$eval(movieSelector, imgs => imgs.map(img => img.alt));
-//       console.log('Done 6');
-//       arr = data;
-//     } catch (err) {
-//       console.log('⚠️ Selector not found in time, fallback logic applied');
-//       if (err.name === 'TimeoutError') {
-//         arr = ['HDToday', 'OnStream'];
-//       } else {
-//         throw err;
-//       }
-//     }
-
-//     // arr.shift();
-//     // console.log(arr);
-
-//     await browser.close();
-//     console.log('Done 7');
-//   } catch (error) {
-//     console.log(error.name); // TimeoutError - if Time exceed more than 10sec
-//     arr = []; // fallback to prev.
-//   }
-
-//   console.log('final Arr : ', arr);
-// }
-
-// test('https://www.imdb.com/title/tt5439796/?ref_=nm_flmg_job_1_cdt_t_6'); // https://www.imdb.com/title/tt1375666/?ref_=nv_sr_srsg_0_tt_4_nm_4_in_0_q_ince
-
-// export async function createNotionDB(title: string, emoji: EmojiRequest) {
-//   const DATABASE_ID = process.env.DATABASE_ID as string;
-//   await notion.pages.create({
-//     parent: {
-//       type: 'database_id',
-//       database_id: DATABASE_ID
-//     },
-//     icon: {
-//       type: 'emoji',
-//       emoji
-//     },
-//     properties: {
-//       'Movie & Web Series': {
-//         title: [{ text: { content: title }, type: 'text' }]
-//       }
-//     }
-//   });
-// }
