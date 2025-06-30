@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { createNotionDB, type EmojiRequest, getImdb } from './service.js';
+import { getImdbInfo, getNotionDetail, getSearchResult, getTMDBDetails } from './service.js';
+import { EmojiRequest } from '../types/service.types.js';
 
 const server = new McpServer({
   name: 'imdb-notion-mcp',
@@ -21,13 +22,16 @@ server.tool(
     )
   },
   async ({ giveTitle }) => {
-    const { title, plot } = await getImdb(2, giveTitle);
+    const { link } = await getSearchResult(2, giveTitle);
+    const { title, plot, genre, rating } = await getImdbInfo(link);
 
     return {
       content: [
         {
           type: 'text',
-          text: `Movie/Tv series Title : "${title}"\n\nHere Is the "PLOT":\n\n"${plot}"`
+          text: `Movie/Tv series Title : "${title}"\n\nHere Is the "PLOT":\n\n"${plot}"\n\nGenre : "${genre.join(
+            ','
+          )}"\n\nRating : "${rating}"\n\nURL : "${link}"`
         }
       ]
     };
@@ -41,7 +45,24 @@ server.tool(
     title: z
       .string()
       .describe(
-        "movie/tv series title get from 'imdb-tmdb-mcp' tool return content where movie title mention"
+        "movie/tv series title get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'title' mention"
+      ),
+    rating: z
+      .number()
+      .describe(
+        "Movie/Tv Series Rating/IMDB Rating get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'rating' mention"
+      ),
+    url: z
+      .string()
+      .url()
+      .describe(
+        "Movie/Tv Series IMDB Url get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'URL' mention"
+      ),
+    genre: z
+      .string()
+      .array()
+      .describe(
+        "Movie/Tv Series genre get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series genre mention this way (e.g. 'Genre : Romance,Action,Drama') so the value for genre should represent this way (e.g. ['Romance','Action','Drama']) genre separate by comma add one by one in an Array as a type string"
       ),
     emoji: z
       .string()
@@ -51,13 +72,17 @@ server.tool(
         "Create/Generate ONE Emoji based on movie/tv series 'PLOT' where 'PLOT' information get from 'imdb-tmdb-mcp' tool return content"
       )
   },
-  async ({ title, emoji }) => {
-    await createNotionDB(title, emoji as EmojiRequest);
+  async ({ title, emoji, rating, url, genre }) => {
+    const { platform, type, imgArr, imgUrl, number_of_seasons } = await getTMDBDetails(url);
+    await getNotionDetail(
+      { title, genre, rating, platform, type, url, imgArr, imgUrl, number_of_seasons },
+      emoji as EmojiRequest
+    );
     return {
       content: [
         {
           type: 'text',
-          text: `Info Grabbed Successfully`
+          text: `Info Grabbed Successfully and ${type} info added to your notion db successfully`
         }
       ]
     };
