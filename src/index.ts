@@ -97,6 +97,31 @@ server.tool(
   }
 );
 
+server.registerPrompt(
+  'movie-tv-data-to-notion',
+  {
+    title: 'movie/tv series data to notion add prompt',
+    description: 'using movie or tv shows name and get data for it and it to notion database',
+    argsSchema: {
+      title: z.string().describe('Enter The Movie/Tv series Title Here'),
+      isWatch: z.string().optional().describe("If You didn't Watch just say 'Not'")
+    }
+  },
+  ({ title, isWatch }) => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `get ${title} info and add to my notion Database ${
+            isWatch === undefined ? '' : `and I didn't watch it`
+          }`
+        }
+      }
+    ]
+  })
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
