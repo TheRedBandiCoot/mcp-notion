@@ -5,7 +5,7 @@ import { getImdbInfo, getNotionDetail, getSearchResult, getTMDBDetails } from '.
 import { EmojiRequest } from '../types/service.types.js';
 
 const server = new McpServer({
-  name: 'imdb-notion-mcp',
+  name: 'imdb-tmdb-info-to-notion',
   version: '1.0.0',
   capabilities: {
     resources: {},
@@ -13,13 +13,14 @@ const server = new McpServer({
   }
 });
 server.tool(
-  'imdb-tmdb-mcp',
-  'Gather information(like "movie/tv show/web series title", movie/tv show/web series plot/story/description) from imdb',
+  'get-info-from-imdb-and-return',
+  'This tool searches IMDb using the provided movie or TV show title (which should end with " - IMDB") and returns important details like the title, plot/description, genre(s), IMDb rating, and the IMDb URL.',
   {
-    giveTitle: z.string().describe(
-      //   'Give The movie/tv show/web series title e.g. for example if user say "get inception movie data from imdb and add the data to my notion db" then value should like this Way "Inception - IMDB" make sure all title always end this IMDB "movie/tv show/web series title - IMDB" like this way'
-      'Movie/TV title ending with " - IMDB" (e.g. "Inception - IMDB")'
-    )
+    giveTitle: z
+      .string()
+      .describe(
+        'Please enter the exact name of the movie or TV show you want to fetch information for, and make sure it ends with " - IMDB". For example, "Inception - IMDB". This format helps the tool understand the user intent clearly and search IMDb correctly.'
+      )
   },
   async ({ giveTitle }) => {
     const { link } = await getSearchResult(2, giveTitle);
@@ -39,43 +40,43 @@ server.tool(
 );
 
 server.tool(
-  'notion-mcp',
-  "After get Info from Imdb/TMDB Using 'imdb-tmdb-mcp' tool now add the title and base on plot One emoji add to your notion Database",
+  'add-imdb-info-to-notion-db',
+  "This tool takes the information returned by the 'get-info-from-imdb-and-return' tool and adds it to the user's Notion database. It requires the title, rating, IMDb URL, genre list, and one emoji that reflects the mood or theme of the plot. Optionally, it also accepts a flag to indicate whether the user has already watched the movie or show.",
   {
     title: z
       .string()
       .describe(
-        "movie/tv series title get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'title' mention"
+        "This is the movie or TV show title, extracted from the result returned by the 'get-info-from-imdb-and-return' tool. You can find it in the 'Title' field of the returned content."
       ),
     rating: z
       .number()
       .describe(
-        "Movie/Tv Series Rating/IMDB Rating get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'rating' mention"
+        "This is the IMDb rating of the movie or TV show, extracted from the result returned by the 'get-info-from-imdb-and-return' tool. It is a number and should reflect the original IMDb rating."
       ),
     url: z
       .string()
       .url()
       .describe(
-        "Movie/Tv Series IMDB Url get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series 'URL' mention"
+        "This is the IMDb URL of the movie or TV show. Extract this from the returned content of the 'get-info-from-imdb-and-return' tool. It should be a full and valid URL (e.g., 'https://www.imdb.com/title/tt1375666/')."
       ),
     genre: z
       .string()
       .array()
       .describe(
-        "Movie/Tv Series genre get from 'imdb-tmdb-mcp' tool return content where movie/tv show/web series genre mention this way (e.g. 'Genre : Romance,Action,Drama') so the value for genre should represent this way (e.g. ['Romance','Action','Drama']) genre separate by comma add one by one in an Array as a type string"
+        "This is an array of genres (e.g., ['Romance', 'Action', 'Drama']), each representing a category the movie or show falls under. This is extracted from the genre section in the 'get-info-from-imdb-and-return' result where the genre appears like 'Genre : Romance,Action,Drama'. Convert this string into an array of strings."
       ),
     emoji: z
       .string()
       .min(1)
       .emoji()
       .describe(
-        "Create/Generate ONE Emoji based on movie/tv series 'PLOT' where 'PLOT' information get from 'imdb-tmdb-mcp' tool return content"
+        "This is a single emoji character that represents the overall plot or emotion of the movie or TV show. It must be selected based on the plot returned from the 'get-info-from-imdb-and-return' tool."
       ),
     aw: z
       .boolean()
       .default(true)
       .describe(
-        "aw - already watch, If user mentioned that he/she didn't watch the movie/tv show/web series then make the value 'false' otherwise default is 'true'"
+        "This flag indicates whether the user has already watched the movie or show. If the user says they haven't watched it yet, set this to 'false'. Otherwise, the default value is 'true'."
       )
   },
   async ({ title, emoji, rating, url, genre, aw }) => {
@@ -99,7 +100,9 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('mcp-notion is running');
+  console.error(
+    '📡 imdb-tmdb-info-to-notion MCP Server is now running and ready to receive user requests.'
+  );
 }
 
 main();
