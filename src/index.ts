@@ -3,6 +3,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { getImdbInfo, getNotionDetail, getSearchResult, getTMDBDetails } from './service.js';
 import { EmojiRequest } from '../types/service.types.js';
+import {
+  APIErrorCode,
+  BlockObjectResponse,
+  Client
+  // PartialBlockObjectResponse
+} from '@notionhq/client';
 
 const server = new McpServer({
   name: 'imdb-tmdb-info-to-notion',
@@ -121,7 +127,7 @@ server.registerPrompt(
     ]
   })
 );
-
+// @ts-ignore
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -130,4 +136,42 @@ async function main() {
   );
 }
 
-main();
+// main();
+
+const notion = new Client({
+  auth: process.env.NOTION_API_KEY
+});
+
+async function updateNotionBlockChildren(title: string) {
+  try {
+    const responseQuery = await notion.databases.query({
+      database_id: process.env.DATABASE_ID!,
+      filter: {
+        property: 'Movie & Web Series',
+        title: {
+          equals: title
+        }
+      }
+    });
+    const blockId = responseQuery.results.map(pageObjRes => pageObjRes.id)[0];
+    if (!blockId) throw new Error('Movie Title not found');
+    const childrenRes = await notion.blocks.children.list({ block_id: blockId });
+    const childrenResult = childrenRes.results as BlockObjectResponse[];
+    const childrenBlockId = childrenResult.find(
+      e => e.type === 'to_do' && e.to_do.rich_text.some(rt => rt.plain_text.includes('Season 02'))
+    );
+    if (!childrenBlockId) throw new Error('Todo/children block not found');
+    // console.log(childrenBlockId.id);
+
+    console.log('Done');
+  } catch (error) {
+    const notionError = error as { code: APIErrorCode.ObjectNotFound };
+    if (notionError.code === APIErrorCode.ObjectNotFound) {
+      console.log('NOTION_ERROR : Obj not found in Notion');
+    } else {
+      console.log(error);
+    }
+  }
+}
+
+updateNotionBlockChildren('testing');
