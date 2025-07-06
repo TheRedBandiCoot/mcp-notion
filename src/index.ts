@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { getImdbInfo, getNotionDetail, getSearchResult, getTMDBDetails } from './service.js';
-import { EmojiRequest } from '../types/service.types.js';
+import type { AddDataArrType, AddDataType, EmojiRequest } from '../types/service.types.js';
 import {
   APIErrorCode,
   BlockObjectResponse,
@@ -157,11 +157,17 @@ async function updateNotionBlockChildren(title: string) {
     if (!blockId) throw new Error('Movie Title not found');
     const childrenRes = await notion.blocks.children.list({ block_id: blockId });
     const childrenResult = childrenRes.results as BlockObjectResponse[];
-    const childrenBlockId = childrenResult.find(
-      e => e.type === 'to_do' && e.to_do.rich_text.some(rt => rt.plain_text.includes('Season 02'))
-    );
-    if (!childrenBlockId) throw new Error('Todo/children block not found');
-    // console.log(childrenBlockId.id);
+    const addData: AddDataArrType = [];
+    childrenResult.map(e => {
+      if (e.type === 'to_do') {
+        let tempObj: AddDataType = {};
+        tempObj['id'] = e.id;
+        tempObj['data'] = e.to_do.rich_text.map(rt => rt.plain_text)[0];
+        addData.push(tempObj);
+      }
+    });
+
+    console.log(addData);
 
     console.log('Done');
   } catch (error) {

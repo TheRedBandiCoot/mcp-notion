@@ -23,3 +23,6 @@ export type GetNotionDetailType = {
   platform: string[];
   imgArr: string[][];
 };
+
+export type AddDataType = { id?: string; data?: string };
+export type AddDataArrType = Array<AddDataType>;
