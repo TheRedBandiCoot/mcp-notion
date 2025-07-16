@@ -1,16 +1,24 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import * as cheerio from 'cheerio';
-import { BlockObjectRequest, Client, APIErrorCode } from '@notionhq/client';
+import { BlockObjectRequest, Client, APIErrorCode, BlockObjectResponse } from '@notionhq/client';
 import puppeteer from 'puppeteer';
 import 'dotenv/config';
+import { EmojiRequest, GetNotionDetailType, TimeOutErrorType } from '../types/service.types.js';
 import {
-  AllImgURLType,
-  EmojiRequest,
-  GetNotionDetailType,
-  TimeOutErrorType
-} from '../types/service.types.js';
+  genAllImgURL,
+  genImgColumn,
+  genTodo,
+  getTmdbId,
+  returnBlockChildren
+} from './utils/handlers.js';
 
 const defaultImdbLink = 'https://www.imdb.com/title/tt14044212/';
+const options: AxiosRequestConfig = {
+  headers: {
+    accept: 'application/json',
+    Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`
+  }
+};
 
 const axiosInstance = axios.create({
   baseURL: 'https://www.googleapis.com/customsearch/v1',
@@ -23,6 +31,8 @@ const axiosInstance = axios.create({
 const notion = new Client({
   auth: process.env.NOTION_API_KEY
 });
+
+const imgBaseUrl = 'https://image.tmdb.org/t/p/original';
 
 export async function getSearchResult(min = 2, query: string): Promise<{ link: string }> {
   try {
@@ -74,7 +84,7 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
       title: titleTxt,
       rating: ratingTxt,
       plot,
-      type: type.first().text() === 'TV Series' ? 'Web Series' : 'Movie',
+      imdbType: type.first().text() === 'TV Series' ? 'Web Series' : 'Movie',
       genre
     };
     return info;
@@ -84,7 +94,7 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
       title: '',
       rating: 'ratingTxt',
       plot: '',
-      type: '',
+      imdbType: '',
       genre: []
     };
     return info;
@@ -99,9 +109,10 @@ export async function getNotionDetail(
     genre,
     url,
     imgUrl,
-    platform,
     imgArr,
-    number_of_seasons
+    number_of_seasons,
+    platform,
+    userMentionNumberOfSeason
   }: GetNotionDetailType,
   emoji: EmojiRequest,
   aw: boolean = true
@@ -167,101 +178,13 @@ export async function getNotionDetail(
       }
     });
 
-    function genImgColumn(arr: string[][]) {
-      const finalArr: BlockObjectRequest[] = [];
-      const tempChildrenArr: BlockObjectRequest[][] = [];
-
-      arr.map(arrChild => {
-        const tempArr: BlockObjectRequest[] = [];
-        arrChild.map(imgUrl => {
-          const tempChildrenObj: BlockObjectRequest = {
-            type: 'column',
-            object: 'block',
-            column: {
-              width_ratio: 0.25,
-              children: [
-                {
-                  object: 'block',
-                  type: 'image',
-                  image: {
-                    type: 'external',
-                    external: {
-                      url: imgUrl
-                    }
-                  }
-                }
-              ]
-            }
-          };
-
-          tempArr.push(tempChildrenObj);
-        });
-        tempChildrenArr.push(tempArr);
-      });
-
-      type ColumnListRequest = Extract<BlockObjectRequest, { type: 'column_list' }>;
-
-      tempChildrenArr.map(e => {
-        const tempObj: BlockObjectRequest = {
-          object: 'block',
-          type: 'column_list',
-          column_list: {
-            children: e as ColumnListRequest
-          }
-        };
-        finalArr.push(tempObj);
-      });
-
-      return finalArr;
+    const blocksChildrenArr = returnBlockChildren(imgUrl);
+    if (number_of_seasons > 0) {
+      const todo = genTodo(number_of_seasons, userMentionNumberOfSeason);
+      blocksChildrenArr.push(todo as BlockObjectRequest);
     }
-
-    function genTodo(number_of_seasons: number) {
-      const todoArr = Array.from({ length: number_of_seasons }, (_, i) => ({
-        object: 'block',
-        type: 'to_do',
-        to_do: {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: `Season ${i + 1 > 9 ? i + 1 : `0${i + 1}`}`
-              }
-            }
-          ],
-          checked: false
-        }
-      }));
-      return todoArr;
-    }
-
-    const blocksChildrenArr: BlockObjectRequest[] = [
-      {
-        object: 'block',
-        type: 'heading_1',
-        heading_1: {
-          rich_text: [{ type: 'text', text: { content: 'Movie Poster Here' } }]
-        }
-      },
-      {
-        object: 'block',
-        type: 'divider',
-        divider: {}
-      },
-      {
-        object: 'block',
-        type: 'image',
-        image: {
-          type: 'external',
-          external: {
-            url: imgUrl
-          }
-        }
-      }
-    ];
-    if (number_of_seasons > 0)
-      genTodo(number_of_seasons).map(e => blocksChildrenArr.push(e as BlockObjectRequest));
-
-    genImgColumn(imgArr).map(e => blocksChildrenArr.push(e));
+    const imgs = genImgColumn(imgArr);
+    blocksChildrenArr.push(imgs);
 
     await notion.blocks.children.append({
       block_id: responseQuery.results.map(pageObjRes => pageObjRes.id)[0]!,
@@ -276,7 +199,10 @@ export async function getNotionDetail(
     }
   }
 }
-export async function getTMDBDetails(imdbURL: string): Promise<{
+export async function getTMDBDetails(
+  imdbURL: string,
+  imdbType: string
+): Promise<{
   tmdbId: string;
   type: string;
   imgUrl: string;
@@ -284,35 +210,11 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
   imgArr: string[][];
   number_of_seasons: number;
 }> {
-  const splitStr = 'https://www.imdb.com/title/';
-  const imdbID = imdbURL.split(splitStr)[1]?.split('/')[0];
-  const imgBaseUrl = 'https://image.tmdb.org/t/p/original';
   try {
-    const findByIdUrl = `https://api.themoviedb.org/3/find/${imdbID}?external_source=imdb_id`;
-    const options = {
-      headers: {
-        accept: 'application/json',
-        Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`
-      }
-    };
-    const findByIdResponse = await axios.get(findByIdUrl, options);
-    const data = findByIdResponse.data;
+    const data = await getTmdbId({ imdbURL, options });
     let type: string, tmdbId: string, imgUrl: string, imgArr: string[][];
     let platform: Array<string> = [];
     let number_of_seasons: number = 0;
-
-    function genAllImgURL(arr: AllImgURLType) {
-      const tempArr: string[][] = [];
-      let tempChildArr: string[] = [];
-      arr.map((e, i) => {
-        tempChildArr.push(`${imgBaseUrl}${e.file_path}`);
-        if ((i + 1) % 4 === 0) {
-          tempArr.push(tempChildArr);
-          tempChildArr = [];
-        }
-      });
-      return tempArr;
-    }
 
     function genIMDBPlatformFixedName(arr: string[]) {
       const tempArr: string[] = [];
@@ -345,13 +247,14 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
       return arr;
     }
 
-    if (data['movie_results'].length === 0) {
+    if (data['movie_results'].length === 0 || imdbType !== 'Movie') {
       const tvData = data?.tv_results[0]; // tv
       tmdbId = tvData.id;
       type = tvData.media_type;
       const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images`;
       const tvSeriesImageResponse = await axios.get(tvSeriesImageUrl, options);
       const imgPath = tvSeriesImageResponse.data.backdrops[0].file_path; // e.g. "/hZkgoQYus5vegHoetLkCJzb17zJ.jpg"
+      imgUrl = imgBaseUrl + imgPath;
 
       // TV Show Number Of Seasons
       const tvSeriesNumberOfSeasonsUrl = `https://api.themoviedb.org/3/tv/${tmdbId}`;
@@ -399,7 +302,6 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
         });
         platform = genTMDBPlatformFixedName(platform);
       }
-      imgUrl = imgBaseUrl + imgPath;
     } else {
       const movieData = data?.movie_results[0]; // movie
       tmdbId = movieData.id;
@@ -407,6 +309,7 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
       const movieImageUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/images`;
       const movieImageResponse = await axios.get(movieImageUrl, options);
       const imgPath = movieImageResponse.data.backdrops[0].file_path;
+      imgUrl = imgBaseUrl + imgPath;
 
       // Movie Img Arr
       imgArr = genAllImgURL(movieImageResponse.data.backdrops);
@@ -449,11 +352,72 @@ export async function getTMDBDetails(imdbURL: string): Promise<{
         });
         platform = genTMDBPlatformFixedName(platform);
       }
-      imgUrl = imgBaseUrl + imgPath;
     }
 
     return { tmdbId, type, imgUrl, platform, imgArr, number_of_seasons };
   } catch (error) {
     return { platform: [], imgArr: [], imgUrl: '', number_of_seasons: 0, tmdbId: '', type: '' };
+  }
+}
+export async function updateNotionBlockChildren(title: string, userMentionNumberOfSeason: number) {
+  try {
+    let tmdbId: number, imgArr: string[][], number_of_seasons: number;
+
+    const { link } = await getSearchResult(2, title); // e.g. https://www.imdb.com/title/tt14044212/
+    const responseQuery = await notion.databases.query({
+      database_id: process.env.DATABASE_ID!,
+      filter: {
+        property: 'View Detail',
+        url: { contains: link }
+      }
+    });
+
+    const data = await getTmdbId({ imdbURL: link, options });
+
+    // tv
+    const tvData = data?.tv_results[0];
+    tmdbId = tvData.id;
+    const tvSeriesImageUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/images`;
+    const tvSeriesNumberOfSeasonsUrl = `https://api.themoviedb.org/3/tv/${tmdbId}`;
+    const [tvSeriesImageResponse, tvSeriesNumberOfSeasonsResponse] = await Promise.all([
+      await axios.get(tvSeriesImageUrl, options),
+      await axios.get(tvSeriesNumberOfSeasonsUrl, options)
+    ]);
+    imgArr = genAllImgURL(tvSeriesImageResponse.data.backdrops);
+    number_of_seasons = tvSeriesNumberOfSeasonsResponse.data.number_of_seasons;
+
+    const blockId = responseQuery.results.map(pageObjRes => pageObjRes.id)[0];
+    if (!blockId) throw new Error('Movie Title not found');
+    const childrenRes = await notion.blocks.children.list({ block_id: blockId });
+    const childrenResult = childrenRes.results as BlockObjectResponse[];
+    const calloutAndToggleAddData: string[] = [];
+    childrenResult.map(e => {
+      if (e.type === 'callout') {
+        calloutAndToggleAddData.push(e.id);
+      } else if (e.type === 'toggle') {
+        calloutAndToggleAddData.push(e.id);
+      }
+    });
+    const calloutDataPromises = calloutAndToggleAddData.map(e =>
+      notion.blocks.delete({ block_id: e })
+    );
+    await Promise.all(calloutDataPromises);
+
+    const blocksChildrenArr: BlockObjectRequest[] = [];
+    const todo = genTodo(number_of_seasons, userMentionNumberOfSeason);
+    blocksChildrenArr.push(todo as BlockObjectRequest);
+    const imgs = genImgColumn(imgArr);
+    blocksChildrenArr.push(imgs);
+    await notion.blocks.children.append({
+      block_id: blockId,
+      children: blocksChildrenArr
+    });
+  } catch (error) {
+    const notionError = error as { code: APIErrorCode.ObjectNotFound };
+    if (notionError.code === APIErrorCode.ObjectNotFound) {
+      console.log('NOTION_ERROR : Obj not found in Notion');
+    } else {
+      console.log(error);
+    }
   }
 }

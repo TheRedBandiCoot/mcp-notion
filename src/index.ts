@@ -1,14 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { getImdbInfo, getNotionDetail, getSearchResult, getTMDBDetails } from './service.js';
-import type { AddDataArrType, AddDataType, EmojiRequest } from '../types/service.types.js';
 import {
-  APIErrorCode,
-  BlockObjectResponse,
-  Client
-  // PartialBlockObjectResponse
-} from '@notionhq/client';
+  getImdbInfo,
+  getNotionDetail,
+  getSearchResult,
+  getTMDBDetails,
+  updateNotionBlockChildren
+} from './service.js';
+import type { EmojiRequest } from '../types/service.types.js';
 
 const server = new McpServer({
   name: 'imdb-tmdb-info-to-notion',
@@ -30,7 +30,7 @@ server.tool(
   },
   async ({ giveTitle }) => {
     const { link } = await getSearchResult(2, giveTitle);
-    const { title, plot, genre, rating } = await getImdbInfo(link);
+    const { title, plot, genre, rating, imdbType } = await getImdbInfo(link);
 
     return {
       content: [
@@ -38,7 +38,7 @@ server.tool(
           type: 'text',
           text: `Movie/Tv series Title : "${title}"\n\nHere Is the "PLOT":\n\n"${plot}"\n\nGenre : "${genre.join(
             ','
-          )}"\n\nRating : "${rating}"\n\nURL : "${link}"`
+          )}"\n\nRating : "${rating}"\n\nURL : "${link}"\n\nIMDB Type : "${imdbType}"`
         }
       ]
     };
@@ -83,12 +83,39 @@ server.tool(
       .default(true)
       .describe(
         "This flag indicates whether the user has already watched the movie or show. If the user says they haven't watched it yet, set this to 'false'. Otherwise, the default value is 'true'."
+      ),
+    imdbType: z
+      .string()
+      .describe(
+        "This is a IMDB type for movie or series. It must be selected based on the 'IMDB Type' returned from the 'get-info-from-imdb-and-return' tool."
+      ),
+    userMentionNumberOfSeason: z
+      .number()
+      .min(1, 'Number must be 1 or Greater')
+      .describe(
+        "This is where user mention how many seasons user already watched, if it's below 10 the make number should be single digit (e.g. 01 or 03 or 09 - Not allowed it must be - 1 or 3 or 9)"
       )
+      .positive('Number Must Be Positive')
+      .optional()
   },
-  async ({ title, emoji, rating, url, genre, aw }) => {
-    const { platform, type, imgArr, imgUrl, number_of_seasons } = await getTMDBDetails(url);
+  async ({ title, emoji, rating, url, genre, aw, imdbType, userMentionNumberOfSeason }) => {
+    const { platform, type, imgArr, imgUrl, number_of_seasons } = await getTMDBDetails(
+      url,
+      imdbType
+    );
     await getNotionDetail(
-      { title, genre, rating, platform, type, url, imgArr, imgUrl, number_of_seasons },
+      {
+        title,
+        genre,
+        rating,
+        platform,
+        type,
+        url,
+        imgArr,
+        imgUrl,
+        number_of_seasons,
+        userMentionNumberOfSeason
+      },
       emoji as EmojiRequest,
       aw
     );
@@ -103,31 +130,83 @@ server.tool(
   }
 );
 
+server.tool(
+  'Update-tv-show-season',
+  "This tool get info like tv show / web series name and how many seasons watched according to that its goto the specific tv show notion page and update it's season by checked the check box",
+  {
+    title: z
+      .string()
+      .describe(
+        'Please enter the exact name of the TV show you want to fetch information for, and make sure it ends with " - IMDB". For example, "Game of Thrones - IMDB". This format helps the tool understand the user intent clearly and search IMDb correctly.'
+      ),
+    userMentionNumberOfSeason: z
+      .number()
+      .min(1, 'Number must be 1 or Greater')
+      .describe(
+        "This is where user mention how many seasons user already watched, if it's below 10 the make number should be single digit (e.g. 01 or 03 or 09 - Not allowed it must be - 1 or 3 or 9)"
+      )
+      .positive('Number Must Be Positive')
+  },
+  async ({ title, userMentionNumberOfSeason }) => {
+    await updateNotionBlockChildren(title, userMentionNumberOfSeason);
+    return {
+      content: [{ type: 'text', text: 'Tv show Seasons updated' }]
+    };
+  }
+);
+
 server.registerPrompt(
   'movie-tv-data-to-notion',
   {
     title: 'movie/tv series data to notion add prompt',
-    description: 'using movie or tv shows name and get data for it and it to notion database',
+    description: 'using movie or tv shows name and get data for it and added it to notion database',
     argsSchema: {
       title: z.string().describe('Enter The Movie/Tv series Title Here'),
-      isWatch: z.string().optional().describe("If You didn't Watch just say 'Not'")
+      isWatch: z.string().optional().describe("If You didn't Watch just say 'Not'"),
+      SeasonNumber: z.string().describe('Enter How Many seasons You watched').optional()
     }
   },
-  ({ title, isWatch }) => ({
+  ({ title, isWatch, SeasonNumber }) => ({
     messages: [
       {
         role: 'user',
         content: {
           type: 'text',
           text: `get ${title} info and add to my notion Database ${
-            isWatch === undefined ? '' : `and I didn't watch it`
+            isWatch === undefined || isWatch.length < 1 ? '' : `and I didn't watch it `
+          }${
+            SeasonNumber === undefined || SeasonNumber.length < 1
+              ? ''
+              : `and update "${title}" seasons till season ${SeasonNumber} already watched`
           }`
         }
       }
     ]
   })
 );
-// @ts-ignore
+server.registerPrompt(
+  'update-tv-seasons-in-notion',
+  {
+    title: 'Update tv series seasons to notion add prompt',
+    description:
+      'Update tv shows seasons, get how many seasons user watch data and added it to notion database',
+    argsSchema: {
+      Title: z.string().describe('Enter The Movie/Tv series Title Here'),
+      SeasonNumber: z.string().describe('Enter How Many seasons You watched')
+    }
+  },
+  ({ Title, SeasonNumber }) => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `update "${Title}" seasons till season ${SeasonNumber} already watched`
+        }
+      }
+    ]
+  })
+);
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -136,48 +215,4 @@ async function main() {
   );
 }
 
-// main();
-
-const notion = new Client({
-  auth: process.env.NOTION_API_KEY
-});
-
-async function updateNotionBlockChildren(title: string) {
-  try {
-    const responseQuery = await notion.databases.query({
-      database_id: process.env.DATABASE_ID!,
-      filter: {
-        property: 'Movie & Web Series',
-        title: {
-          equals: title
-        }
-      }
-    });
-    const blockId = responseQuery.results.map(pageObjRes => pageObjRes.id)[0];
-    if (!blockId) throw new Error('Movie Title not found');
-    const childrenRes = await notion.blocks.children.list({ block_id: blockId });
-    const childrenResult = childrenRes.results as BlockObjectResponse[];
-    const addData: AddDataArrType = [];
-    childrenResult.map(e => {
-      if (e.type === 'to_do') {
-        let tempObj: AddDataType = {};
-        tempObj['id'] = e.id;
-        tempObj['data'] = e.to_do.rich_text.map(rt => rt.plain_text)[0];
-        addData.push(tempObj);
-      }
-    });
-
-    console.log(addData);
-
-    console.log('Done');
-  } catch (error) {
-    const notionError = error as { code: APIErrorCode.ObjectNotFound };
-    if (notionError.code === APIErrorCode.ObjectNotFound) {
-      console.log('NOTION_ERROR : Obj not found in Notion');
-    } else {
-      console.log(error);
-    }
-  }
-}
-
-updateNotionBlockChildren('testing');
+main();

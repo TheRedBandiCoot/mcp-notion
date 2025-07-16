@@ -1,4 +1,5 @@
-import { PageObjectResponse } from '@notionhq/client';
+import { BlockObjectRequest, PageObjectResponse } from '@notionhq/client';
+import { type AxiosRequestConfig } from 'axios';
 
 export type EmojiRequest = Extract<
   Exclude<PageObjectResponse['icon'], null>,
@@ -22,7 +23,11 @@ export type GetNotionDetailType = {
   genre: string[];
   platform: string[];
   imgArr: string[][];
+  userMentionNumberOfSeason?: number;
 };
 
-export type AddDataType = { id?: string; data?: string };
-export type AddDataArrType = Array<AddDataType>;
+export type ToggleChildrenType = Extract<BlockObjectRequest, { type: 'toggle' }>['children'];
+export type GetTmdbIdType = {
+  imdbURL: string;
+  options?: AxiosRequestConfig<any>;
+};
