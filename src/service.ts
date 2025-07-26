@@ -63,7 +63,7 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
     const $1 = cheerio.load(imdbResponseHtml);
     const $2 = cheerio.load(imdbPlotResponseHtml);
 
-    const ratingEle = $1('span.sc-d541859f-1.imUuxf');
+    const ratingEle = $1('[data-testid=hero-rating-bar__aggregate-rating__score]>span');
     const titleEle = $1('span.hero__primary-text');
     const plotEle = $2('.ipc-html-content-inner-div');
     const ratingTxt = ratingEle.first().text();
