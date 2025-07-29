@@ -287,6 +287,7 @@ export async function getTMDBDetails(
           const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
           platform = genIMDBPlatformFixedName(scrapeResponse);
           platform.shift();
+          if (platform.length < 1) platform = ['HDToday', 'OnStream'];
         } catch (err) {
           const timeOutError = err as TimeOutErrorType;
           if (timeOutError.name === 'TimeoutError') {
@@ -337,6 +338,7 @@ export async function getTMDBDetails(
           await page.waitForSelector(selector, { timeout: 10000 });
           const scrapeResponse = await page.$$eval(selector, imgs => imgs.map(img => img.alt));
           platform = genIMDBPlatformFixedName(scrapeResponse);
+          if (platform.length < 1) platform = ['HDToday', 'OnStream'];
         } catch (err) {
           const timeOutError = err as TimeOutErrorType;
           if (timeOutError.name === 'TimeoutError') {
