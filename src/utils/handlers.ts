@@ -1,4 +1,4 @@
-import { BlockObjectRequest } from '@notionhq/client';
+import { AppendBlockChildrenResponse, BlockObjectRequest, Client } from '@notionhq/client';
 import type {
   AllImgURLType,
   GetTmdbIdType,
@@ -154,4 +154,52 @@ export function genAllImgURL(
     }
   });
   return tempArr;
+}
+
+export async function updateAllImgs(
+  isImgBlock: boolean = true,
+  notion: Client,
+  childBlock: AppendBlockChildrenResponse,
+  imgArr: string[][],
+  imgUrl?: string
+) {
+  //@ts-ignore
+  const toggleBlockId = childBlock.results.filter(e => e.type === 'toggle')[0].id;
+
+  const response = await notion.blocks.children.list({
+    block_id: toggleBlockId,
+    page_size: 99
+  });
+  //@ts-ignore
+  const imgBlocksArrId = response.results.filter(e => e.type === 'image').map(j => j.id);
+  // console.log('imgBlockId', imgBlocksArrId);
+
+  const imgFlatArr = imgArr.flat();
+  await new Promise(r => setTimeout(r, 3000));
+  if (isImgBlock) {
+    //@ts-ignore
+    const imgBlockId = childBlock.results.filter(e => e.type === 'image')[0].id;
+    await notion.blocks.update({
+      block_id: imgBlockId,
+      image: {
+        external: { url: imgUrl as string }
+      }
+    });
+  }
+
+  console.log(`🌉 Total image : ${imgBlocksArrId.length}`);
+  for (let i = 0; i < imgBlocksArrId.length; i++) {
+    try {
+      await notion.blocks.update({
+        block_id: imgBlocksArrId[i] as string,
+        image: {
+          external: { url: imgFlatArr[i] as string }
+        }
+      });
+      // console.log(`✅ Updated image ${i + 1}/${imgBlocksArrId.length}`);
+    } catch (err: any) {
+      // console.warn(`⚠️ Failed image ${i + 1}: ${err.code || err.message}`);
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
 }

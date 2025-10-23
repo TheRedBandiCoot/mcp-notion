@@ -9,7 +9,8 @@ import {
   genImgColumn,
   genTodo,
   getTmdbId,
-  returnBlockChildren
+  returnBlockChildren,
+  updateAllImgs
 } from './utils/handlers.js';
 
 const defaultImdbLink = 'https://www.imdb.com/title/tt14044212/';
@@ -134,7 +135,7 @@ export async function getNotionDetail(
       };
     });
 
-    await notion.pages.create({
+    const { id: data_source_id } = await notion.pages.create({
       parent: {
         type: 'database_id',
         database_id: DATABASE_ID as string
@@ -168,16 +169,6 @@ export async function getNotionDetail(
       }
     });
 
-    const responseQuery = await notion.databases.query({
-      database_id: DATABASE_ID as string,
-      filter: {
-        property: 'Movie & Web Series',
-        title: {
-          equals: title
-        }
-      }
-    });
-
     const blocksChildrenArr = returnBlockChildren(imgUrl);
     if (number_of_seasons > 0) {
       const todo = genTodo(number_of_seasons, userMentionNumberOfSeason);
@@ -186,10 +177,11 @@ export async function getNotionDetail(
     const imgs = genImgColumn(imgArr);
     blocksChildrenArr.push(imgs);
 
-    await notion.blocks.children.append({
-      block_id: responseQuery.results.map(pageObjRes => pageObjRes.id)[0]!,
+    const childBlock = await notion.blocks.children.append({
+      block_id: data_source_id,
       children: blocksChildrenArr
     });
+    await updateAllImgs(true, notion, childBlock, imgArr, imgUrl);
   } catch (error) {
     const notionError = error as { code: APIErrorCode.ObjectNotFound };
     if (notionError.code === APIErrorCode.ObjectNotFound) {
@@ -366,8 +358,13 @@ export async function updateNotionBlockChildren(title: string, userMentionNumber
     let tmdbId: number, imgArr: string[][], number_of_seasons: number;
 
     const { link } = await getSearchResult(2, title); // e.g. https://www.imdb.com/title/tt14044212/
-    const responseQuery = await notion.databases.query({
-      database_id: process.env.DATABASE_ID!,
+    const extractDataSourceId = await notion.databases.retrieve({
+      database_id: process.env.DATABASE_ID!
+    });
+
+    const responseQuery = await notion.dataSources.query({
+      // @ts-ignore
+      data_source_id: extractDataSourceId.data_sources[0].id,
       filter: {
         property: 'View Detail',
         url: { contains: link }
@@ -410,10 +407,11 @@ export async function updateNotionBlockChildren(title: string, userMentionNumber
     blocksChildrenArr.push(todo as BlockObjectRequest);
     const imgs = genImgColumn(imgArr);
     blocksChildrenArr.push(imgs);
-    await notion.blocks.children.append({
+    const childBlock = await notion.blocks.children.append({
       block_id: blockId,
       children: blocksChildrenArr
     });
+    await updateAllImgs(false, notion, childBlock, imgArr);
   } catch (error) {
     const notionError = error as { code: APIErrorCode.ObjectNotFound };
     if (notionError.code === APIErrorCode.ObjectNotFound) {
