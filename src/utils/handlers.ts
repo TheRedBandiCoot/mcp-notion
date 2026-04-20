@@ -5,6 +5,7 @@ import type {
   ToggleChildrenType
 } from '../../types/service.types.js';
 import axios from 'axios';
+import puppeteer from 'puppeteer';
 
 export function genTodo(number_of_seasons: number, userMentionNumberOfSeason?: number) {
   let todoArr = Array.from({ length: number_of_seasons }, (_, i) => ({
@@ -202,4 +203,26 @@ export async function updateAllImgs(
     }
     await new Promise(r => setTimeout(r, 500));
   }
+}
+
+export async function getImdbGenre(url: string): Promise<Array<string>> {
+  const browser = await puppeteer.launch({ headless: false });
+
+  const page = await browser.newPage();
+
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+  );
+
+  await page.goto(url, { waitUntil: 'networkidle2' });
+
+  await page.waitForSelector('.ipc-chip-list__scroller', { timeout: 10000 });
+  const genre = await page.$$eval('.ipc-chip-list__scroller .ipc-chip', elements =>
+    elements
+      .map(e => (e.querySelector('.ipc-chip__text') as HTMLElement)?.innerText.trim())
+      .filter(Boolean)
+  );
+
+  await browser.close();
+  return genre;
 }

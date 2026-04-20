@@ -8,6 +8,7 @@ import {
   genAllImgURL,
   genImgColumn,
   genTodo,
+  getImdbGenre,
   getTmdbId,
   returnBlockChildren,
   updateAllImgs
@@ -71,11 +72,7 @@ export async function getImdbInfo(url = 'https://www.imdb.com/title/tt14044212/'
     const titleTxt = titleEle.first().text();
     const plot = plotEle.first().text();
 
-    const listGenre = $1('a.ipc-chip.ipc-chip--on-baseAlt>span.ipc-chip__text');
-    const genre: Array<string> = [];
-    listGenre.each((i, ele) => {
-      genre[i] = $1(ele).first().text();
-    });
+    const genre: Array<string> = await getImdbGenre(url);
 
     const type = $1(
       'ul.ipc-inline-list.ipc-inline-list--show-dividers.sc-d3b78e42-2.etAqcO.baseAlt.baseAlt>li.ipc-inline-list__item'
